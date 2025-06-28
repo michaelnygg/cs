@@ -1,76 +1,56 @@
-import requests
-import json
+import os
 import time
+import requests
 from datetime import datetime
 
-# === CONFIGURATION ===
-DRIVER_ID = 1241431  # Your driver ID
-auth_headers = {
-    "Authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvYXBpLmNpdGl6ZW5zaGlwcGVyLmNvbVwvYXBpXC9hY2Nlc3NfdG9rZW4iLCJpYXQiOjE3NTA2NjA2ODAsImV4cCI6MTc1MTA5MjY4MCwibmJmIjoxNzUwNjYwNjgwLCJqdGkiOiJiNWNFSUtPQmNKeFpTUFF0Iiwic3ViIjoxMjQxNDMxLCJwcnYiOiI2MDgxYTRlMjE5NTczNGI3YTEzMTVlOTNkZjUzYmRiMmZhYzU4OTdiIn0.eLvkfgaA3B41z4sTJC2leoQkg-t1V1s1srgmpmRRxbU",
+# === Config from .env ===
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_CHAT_ID = os.getenv("GROUP_CHAT_ID")
+AUTH_BEARER_TOKEN = os.getenv("AUTH_BEARER_TOKEN")
+DRIVER_ID = int(os.getenv("DRIVER_ID"))
+
+headers = {
+    "Authorization": f"Bearer {AUTH_BEARER_TOKEN}",
     "Accept": "application/json"
 }
-TELEGRAM_BOT_TOKEN = "7854664135:AAFeTvrBjIMvb-eXPAhqzn6QXE3XWgzLulg"
-TELEGRAM_CHAT_ID = "-4607729642"
 
-ACTIVE_BIDS_URL = "https://daedalus.citizenshipper.com/api/shipments/?feed=active"
-
-
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+def send_telegram_alert(message):
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
+        "chat_id": GROUP_CHAT_ID,
         "text": message,
         "parse_mode": "Markdown"
     }
     try:
-        r = requests.post(url, json=payload)
-        if r.status_code != 200:
-            print(f"[!] Telegram error: {r.text}")
-    except Exception as e:
-        print(f"[!] Telegram exception: {e}")
-
-
-def check_for_outbids():
-    try:
-        response = requests.get(ACTIVE_BIDS_URL, headers=auth_headers)
+        response = requests.post(url, json=payload)
         if response.status_code != 200:
-            print(f"[!] Error fetching active bids: {response.status_code}")
-            return
-
-        data = response.json().get("data", [])
-
-        for shipment in data:
-            shipment_id = shipment.get("id")
-            shipment_title = shipment.get("title")
-            bids = shipment.get("bids", {}).get("data", [])
-
-            if not bids:
-                continue
-
-            # Find lowest bid and check ownership
-            sorted_bids = sorted(bids, key=lambda x: float(x.get("amount", 99999)))
-            lowest_bid = sorted_bids[0]
-            bidder_id = lowest_bid.get("driver", {}).get("id")
-            bid_amount = lowest_bid.get("amount")
-
-            if bidder_id != DRIVER_ID:
-                message = (
-                    f"🚨 *Outbid Alert!*\n\n"
-                    f"*Shipment:* {shipment_title}\n"
-                    f"*Your bid has been outbid by:* {lowest_bid.get('driver', {}).get('displayName')}\n"
-                    f"*New lowest bid:* ${bid_amount}\n"
-                    f"[View Shipment](https://citizenshipper.com/{shipment.get('slug')})"
-                )
-                send_telegram_message(message)
-
+            print(f"[!] Telegram Error: {response.text}")
     except Exception as e:
-        print(f"[!] Error during outbid check: {e}")
+        print(f"[!] Telegram Exception: {e}")
 
+def fetch_shipments():
+    try:
+        res = requests.get("https://daedalus.citizenshipper.com/api/shipments/?feed=recommended", headers=headers)
+        res.raise_for_status()
+        return res.json().get("data", [])
+    except Exception as e:
+        print(f"[!] Fetch error: {e}")
+        return []
 
-# === RUN THE CHECK ===
-if __name__ == "__main__":
-    print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
-    check_for_outbids()
-    print(f"[END] Check complete at {datetime.now().isoformat()}")
+seen_ids = set()
 
-
+while True:
+    print(f"[{datetime.now()}] Checking for new shipments...")
+    shipments = fetch_shipments()
+    for shipment in shipments:
+        shipment_id = shipment.get("id")
+        if shipment_id not in seen_ids:
+            seen_ids.add(shipment_id)
+            message = (
+                f"📦 *New Shipment!*\n"
+                f"*From:* {shipment.get('pickup', {}).get('city')}, {shipment.get('pickup', {}).get('stateCode')}\n"
+                f"*To:* {shipment.get('delivery', {}).get('city')}, {shipment.get('delivery', {}).get('stateCode')}\n"
+                f"[View Listing](https://citizenshipper.com/shipment/{shipment_id})"
+            )
+            send_telegram_alert(message)
+    time.sleep(60)

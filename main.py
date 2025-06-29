@@ -1,9 +1,7 @@
 import requests
 import os
-import time
 from datetime import datetime
 
-# === CONFIGURATION ===
 DRIVER_ID = int(os.getenv("DRIVER_ID"))
 AUTH_BEARER_TOKEN = os.getenv("AUTH_BEARER_TOKEN")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -47,27 +45,34 @@ def check_for_outbids():
             if not bids:
                 continue
 
-            # Find lowest bid and check ownership
-            sorted_bids = sorted(bids, key=lambda x: float(x.get("amount", 99999)))
-            lowest_bid = sorted_bids[0]
-            bidder_id = lowest_bid.get("driver", {}).get("id")
-            bid_amount = lowest_bid.get("amount")
+            your_bid = next((b for b in bids if b.get("driver", {}).get("id") == DRIVER_ID), None)
+            lowest_bid = min(bids, key=lambda b: float(b.get("amount", 99999)))
 
-            if bidder_id != DRIVER_ID:
-                message = (
-                    f"🚨 *Outbid Alert!*\n\n"
-                    f"*Shipment:* {shipment_title}\n"
-                    f"*Your bid has been outbid by:* {lowest_bid.get('driver', {}).get('displayName')}\n"
-                    f"*New lowest bid:* ${bid_amount}\n"
-                    f"[View Shipment](https://citizenshipper.com/{shipment.get('slug')})"
-                )
-                send_telegram_message(message)
+            if your_bid:
+                your_bid_amount = float(your_bid.get("amount", 99999))
+                lowest_bid_amount = float(lowest_bid.get("amount", 99999))
+
+                if lowest_bid_amount < your_bid_amount:
+                    message = (
+                        f"🚨 *Outbid Alert!*
+
+"
+                        f"*Shipment:* {shipment_title}
+"
+                        f"*Your bid:* ${your_bid_amount}
+"
+                        f"*New lowest bid:* ${lowest_bid_amount} by {lowest_bid.get('driver', {}).get('displayName')}
+"
+                        f"[View Shipment](https://citizenshipper.com/{shipment.get('slug')})"
+                    )
+                    send_telegram_message(message)
 
     except Exception as e:
         print(f"[!] Error during outbid check: {e}")
 
-# === RUN THE CHECK ===
 if __name__ == "__main__":
     print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
+    check_for_outbids()
+    print(f"[END] Check complete at {datetime.now().isoformat()}")
     check_for_outbids()
     print(f"[END] Check complete at {datetime.now().isoformat()}")

@@ -10,7 +10,7 @@
   "crons": [
     {
       "command": "python main.py",
-      "schedule": "* 5 * * *"
+      "schedule": "* /5 * * *"
     }
   ]
 }

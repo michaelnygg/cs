@@ -80,3 +80,4 @@ if __name__ == "__main__":
     print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
     check_for_outbids()
     print(f"[END] Check complete at {datetime.now().isoformat()}")
+

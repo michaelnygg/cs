@@ -50,7 +50,7 @@ def check_for_outbids():
                 print("[DEBUG] No bids found.")
                 continue
 
-            your_bid = next((b for b in bids if b.get("driver", {}).get("id") == DRIVER_ID), None)
+            your_bid = next((b for b in bids if str(b.get("driver", {}).get("id")) == DRIVER_ID), None)
             print(f"[DEBUG] Your bid: {your_bid}")
 
             lowest_bid = min(bids, key=lambda b: float(b.get("amount", 99999)))

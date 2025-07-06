@@ -79,5 +79,6 @@ def check_for_outbids():
 if __name__ == "__main__":
     print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
     check_for_outbids()
+    send_telegram_message("🛠 Outbid monitor ran successfully — this is a test message.")
     print(f"[END] Check complete at {datetime.now().isoformat()}")
 

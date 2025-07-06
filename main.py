@@ -77,7 +77,6 @@ if __name__ == "__main__":
     try:
         print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
         check_for_outbids()
-        send_telegram_message("🛠 Outbid monitor ran successfully — this is a test message.")
         print(f"[END] Check complete at {datetime.now().isoformat()}")
     except Exception as e:
         send_telegram_message(f"❌ Script crashed: {e}")

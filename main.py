@@ -2,7 +2,7 @@ import requests
 import os
 from datetime import datetime
 
-DRIVER_ID = int(os.getenv("DRIVER_ID"))
+DRIVER_ID = os.getenv("DRIVER_ID")
 AUTH_BEARER_TOKEN = os.getenv("AUTH_BEARER_TOKEN")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")

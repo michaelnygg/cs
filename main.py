@@ -1,82 +1,115 @@
 import requests
+import time
 import os
 from datetime import datetime
+import json
 
-DRIVER_ID = os.getenv("DRIVER_ID")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+GROUP_CHAT_ID = int(os.getenv("GROUP_CHAT_ID", "-1000000000"))
 AUTH_BEARER_TOKEN = os.getenv("AUTH_BEARER_TOKEN")
-TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-auth_headers = {
-    "Authorization": f"Bearer {AUTH_BEARER_TOKEN}",
-    "Accept": "application/json"
+def send_telegram_alert(shipment, current_bid=None, my_bid=None):
+    try:
+        pickup = shipment.get("pickup", {})
+        delivery = shipment.get("delivery", {})
+
+        origin_city = pickup.get("city", "Unknown")
+        origin_state = pickup.get("stateCode", "Unknown")
+        dest_city = delivery.get("city", "Unknown")
+        dest_state = delivery.get("stateCode", "Unknown")
+        shipment_type = shipment.get("shipmentType", "N/A")
+
+        current_bid = current_bid if current_bid is not None else shipment.get("budget", "N/A")
+        my_bid = my_bid if my_bid is not None else shipment.get("myBid", "N/A")
+
+        message = f"""📦 *New Shipment Available or Updated!*
+From: `{origin_city}, {origin_state}`
+To: `{dest_city}, {dest_state}`
+Type: *{shipment_type}*
+Current Bid: *${current_bid}*
+Your Bid: *${my_bid}*
+[🔗 View on CitizenShipper](https://citizenshipper.com/shipment/{shipment.get('id')})"""
+
+        url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+        payload = {
+            "chat_id": GROUP_CHAT_ID,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+
+        response = requests.post(url, data=payload)
+        if response.status_code != 200:
+            print(f"[{datetime.now()}] ❌ Telegram error: {response.text}")
+        else:
+            print(f"[{datetime.now()}] ✅ Alert sent to group")
+
+    except Exception as e:
+        print(f"[{datetime.now()}] ❗ Telegram send failed: {e}")
+
+url = "https://daedalus.citizenshipper.com/api/shipments/?feed=recommended"
+headers = {
+    "Authorization": f"Bearer {AUTH_BEARER_TOKEN}"
 }
 
-ACTIVE_BIDS_URL = "https://daedalus.citizenshipper.com/api/shipments/?feed=active"
+def fetch_listings():
+    response = requests.get(url, headers=headers)
+    print(f"[DEBUG] Status: {response.status_code}")
+    print(f"[DEBUG] Raw JSON (first 500 chars): {response.text[:500]}")
+    response.raise_for_status()
+    return response.json()
 
-def send_telegram_message(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message,
-        "parse_mode": "Markdown"
-    }
+seen_shipments = {}
+
+while True:
     try:
-        r = requests.post(url, json=payload)
-        print(f"[DEBUG] Telegram response: {r.status_code} - {r.text}")
-    except Exception as e:
-        print(f"[!] Telegram exception: {e}")
+        data = fetch_listings()
 
-def check_for_outbids():
-    print(f"[DEBUG] Using driver ID: {DRIVER_ID}")
-    response = requests.get(ACTIVE_BIDS_URL, headers=auth_headers)
-    print(f"[DEBUG] Status code from active bids API: {response.status_code}")
-    if response.status_code != 200:
-        print(f"[!] Error fetching active bids: {response.status_code}")
-        return
-
-    data = response.json().get("data", [])
-
-    for shipment in data:
-        shipment_id = shipment.get("id")
-        shipment_title = shipment.get("title")
-        print(f"[DEBUG] Checking shipment {shipment_id} - {shipment_title}")
-
-        bids = shipment.get("bids", {}).get("data", [])
-        print(f"[DEBUG] Bids data: {bids}")
-
-        if not bids:
-            print("[DEBUG] No bids found.")
-            continue
-
-        your_bid = next((b for b in bids if str(b.get("driver", {}).get("id")) == DRIVER_ID), None)
-        print(f"[DEBUG] Your bid: {your_bid}")
-
-        lowest_bid = min(bids, key=lambda b: float(b.get("amount", 99999)))
-        print(f"[DEBUG] Lowest bid: {lowest_bid}")
-
-        if your_bid:
-            your_bid_amount = float(your_bid.get("amount", 99999))
-            lowest_bid_amount = float(lowest_bid.get("amount", 99999))
-
-            if lowest_bid_amount < your_bid_amount:
-                message = f"""🚨 *Outbid Alert!*
-
-*Shipment:* {shipment_title}
-*Your bid:* ${your_bid_amount}
-*New lowest bid:* ${lowest_bid_amount} by {lowest_bid.get('driver', {}).get('displayName')}
-[View Shipment](https://citizenshipper.com/{shipment.get('slug')})"""
-                send_telegram_message(message)
-            else:
-                print("[DEBUG] Your bid is still the lowest or equal.")
+        if "shipments" in data:
+            shipments = data["shipments"]
+        elif "results" in data:
+            shipments = data["results"]
+        elif "data" in data:
+            shipments = data["data"]
+            print(f"[{datetime.now()}] ✅ Shipments pulled from key: 'data'")
         else:
-            print("[DEBUG] No bid found for your driver ID.")
+            print(f"[{datetime.now()}] ⚠️ No recognizable shipment key found")
+            shipments = []
 
-# Main execution block with error handling and test message
-if __name__ == "__main__":
-    try:
-        print(f"[START] Outbid monitor started at {datetime.now().isoformat()}")
-        check_for_outbids()
-        print(f"[END] Check complete at {datetime.now().isoformat()}")
+        print(f"[{datetime.now()}] 📦 Fetched {len(shipments)} shipments")
+
+        for shipment in shipments:
+            shipment_id = shipment.get("id")
+            if not shipment_id:
+                continue
+
+            current_bid = shipment.get("budget")
+            my_bid = shipment.get("myBid")
+
+            previous = seen_shipments.get(shipment_id)
+
+            if not previous:
+                print(f"[{datetime.now()}] 🚚 New shipment ID {shipment_id}")
+                send_telegram_alert(shipment, current_bid, my_bid)
+                seen_shipments[shipment_id] = {
+                    "current_bid": current_bid,
+                    "my_bid": my_bid
+                }
+            elif previous["current_bid"] != current_bid or previous["my_bid"] != my_bid:
+                print(f"[{datetime.now()}] 🔄 Bid update for shipment ID {shipment_id}")
+                send_telegram_alert(shipment, current_bid, my_bid)
+                seen_shipments[shipment_id] = {
+                    "current_bid": current_bid,
+                    "my_bid": my_bid
+                }
+            else:
+                print(f"[{datetime.now()}] ↪️ No change for shipment ID {shipment_id}")
+
     except Exception as e:
-        send_telegram_message(f"❌ Script crashed: {e}")
+        print(f"[{datetime.now()}] ❗ Error fetching or processing shipments: {e}")
+
+    time.sleep(30)
+
+        print(f"[{datetime.now()}] ❗ Error fetching or processing shipments: {e}")
+
+    time.sleep(30)
+

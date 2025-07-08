@@ -108,8 +108,3 @@ while True:
         print(f"[{datetime.now()}] ❗ Error fetching or processing shipments: {e}")
 
     time.sleep(30)
-
-        print(f"[{datetime.now()}] ❗ Error fetching or processing shipments: {e}")
-
-    time.sleep(30)
-
